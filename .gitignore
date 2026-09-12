@@ -1,0 +1,17 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Ll]ogs/
+[Uu]serSettings/
+[Bb]uild/
+[Bb]uilds/
+
+# macOS
+.DS_Store
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+
+# Unity generated files
+sysinfo.txt
