@@ -202,7 +202,7 @@ namespace UnityCar.Scripts
 				// use them to set the wheel model's position and rotation
 				wheel.wheelCollider.GetWorldPose(out wheelPosition, out wheelRotation);
 				wheel.wheelMesh.transform.position = wheelPosition;
-				wheel.wheelMesh.transform.rotation = wheelRotation;
+				wheel.wheelMesh.transform.rotation = wheelRotation * Quaternion.Euler(0, 0, 90);
 			}
 		}
 	}
