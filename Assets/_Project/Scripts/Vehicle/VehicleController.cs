@@ -161,7 +161,7 @@ namespace IDS.Vehicle
         private void UpdateSpeed()
         {
             // Signed: forward positive, reverse negative.
-            float forwardSpeed = Vector3.Dot(_rb.velocity, transform.forward);
+            float forwardSpeed = Vector3.Dot(_rb.linearVelocity, transform.forward);
             CurrentSpeedKph = forwardSpeed * 3.6f;
         }
 
@@ -206,7 +206,7 @@ namespace IDS.Vehicle
         /// <summary>Teleport for scenario resets. Zeroes velocity so the reset is clean.</summary>
         public void ResetTo(Vector3 position, Quaternion rotation)
         {
-            _rb.velocity = Vector3.zero;
+            _rb.linearVelocity = Vector3.zero;
             _rb.angularVelocity = Vector3.zero;
             transform.SetPositionAndRotation(position, rotation);
             CurrentSpeedKph = 0f;
