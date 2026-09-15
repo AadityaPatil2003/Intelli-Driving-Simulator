@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 767d210da185fdf439983e79f69e8405, type: 3}
+  m_Name: India
+  m_EditorClassIdentifier: Assembly-CSharp::IDS.AI.CountryProfile
+  profileId: india
+  displayName: India
+  trafficSide: 0
+  driverSeatSide: 1
+  priorityMirror: 0
+  roundaboutGiveWaySide: 1
+  turnOnRedAllowed: 0
+  hookTurnsEnabled: 0
+  tramRulesEnabled: 0
+  defaultSpeedLimitKph: 50
+  expectedMirrorChecksPerMinute: 4
+  safeGapSeconds: 3
+  keyDifferencesBlurb: Traffic keeps left, driver sits right. Lane discipline is informal and mixed. No hook turns or tram rules.

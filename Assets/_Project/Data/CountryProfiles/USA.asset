@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 767d210da185fdf439983e79f69e8405, type: 3}
+  m_Name: USA
+  m_EditorClassIdentifier: Assembly-CSharp::IDS.AI.CountryProfile
+  profileId: usa
+  displayName: USA / UAE
+  trafficSide: 1
+  driverSeatSide: 0
+  priorityMirror: 1
+  roundaboutGiveWaySide: 0
+  turnOnRedAllowed: 1
+  hookTurnsEnabled: 0
+  tramRulesEnabled: 0
+  defaultSpeedLimitKph: 55
+  expectedMirrorChecksPerMinute: 6
+  safeGapSeconds: 4
+  keyDifferencesBlurb: Traffic keeps right, driver sits left. Give way to the left at roundabouts. Right turn on red is generally permitted. Strict lane discipline.

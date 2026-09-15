@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 767d210da185fdf439983e79f69e8405, type: 3}
+  m_Name: Australia
+  m_EditorClassIdentifier: Assembly-CSharp::IDS.AI.CountryProfile
+  profileId: australia
+  displayName: Australia (VIC)
+  trafficSide: 0
+  driverSeatSide: 1
+  priorityMirror: 0
+  roundaboutGiveWaySide: 1
+  turnOnRedAllowed: 0
+  hookTurnsEnabled: 1
+  tramRulesEnabled: 1
+  defaultSpeedLimitKph: 50
+  expectedMirrorChecksPerMinute: 6
+  safeGapSeconds: 4
+  keyDifferencesBlurb: Traffic keeps left, driver sits right. Give way to the right at roundabouts. Hook turns and trams in central Melbourne. No turn on red.
