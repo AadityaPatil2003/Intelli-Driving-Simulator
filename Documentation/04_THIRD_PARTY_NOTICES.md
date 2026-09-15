@@ -49,7 +49,16 @@ Unity/Meta packages installed through Package Manager under the Unity Companion
 License and their own terms. They are declared here for completeness; they are
 not code we copied.
 
-<!-- Add one block per reused component below, using the template above. -->
+Component: Unity-UnityCar (New Input System, Unity 6+ variant)
+Repository: https://github.com/deathwatchgaming/Unity-UnityCar
+Original author: deathwatchgaming
+Licence: MIT
+Files used: CarControl.cs, CarInputActions.cs, CarInputActions.inputactions
+Files modified: CarControl.cs — one line in UpdateWheels(), added a Quaternion.Euler(0, 0, 90) correction to wheel mesh rotation (cosmetic fix for primitive test wheels; no functional/physics change)
+Purpose: Base implementation for B2 vehicle controller, evaluated instead of writing from scratch per brief
+Changes made by Team VrOoOm: Wheel mesh rotation fix as above; otherwise used as-is pending B2 integration with IVehicleState
+Team member responsible: Ananya
+Date added: 15 Sept 2026
 
 ## Team decisions log
 
@@ -64,4 +73,4 @@ one is a sentence of justification you will want when writing the final report.
 | Wk 4 | Post-drive report feeds the next session | Makes it a trainer rather than a test. | Omkar |
 | Wk 4 | One vehicle prefab + one scene, drive side as a data transform | Two vehicles and two maps doubles the work and then doubles the maintenance, and the copies drift apart. | Ananya |
 | Wk 4 | Two-stage intelligence: rule scorer then classifier | The rule scorer works at M2 with no data and stays as the fallback, so the adaptive loop functions regardless of classifier accuracy. | Anushka |
-| Wk 5 | Wheel steering approach: **TBD after the A6 spike** | Record the outcome and the reason here. | Aaditya |
+| Wk 5 | Vehicle controller spike: USE Unity-UnityCar as B2 base | Compiles cleanly on Unity 6000.6.0f1, drives and steers correctly (verified via Rigidbody position deltas on both axes), code is minimal (~200 lines, no gearbox/fuel/damage) so adapting to IVehicleState is straightforward. | Ananya |
