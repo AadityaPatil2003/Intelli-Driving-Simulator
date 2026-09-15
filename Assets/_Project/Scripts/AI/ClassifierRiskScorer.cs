@@ -66,12 +66,17 @@ namespace IDS.AI
             float probability = _model.Predict(vector);
             if (probability < 0f) return baseline;   // predict failed, fall back
 
+            // Capture the rule scorer's opinion BEFORE overwriting it, so the
+            // comparison can be logged without running the whole scorer a second
+            // time. This comparison is the number the final report should quote.
+            float ruleComposite = baseline.CompositeRisk;
+
             baseline.CompositeRisk = Mathf.Clamp(probability * 100f, 0f, 100f);
             baseline.ScorerUsed = ScorerName;
 
             Debug.Log($"[Classifier] p(high_risk)={probability:F3} → " +
                       $"composite {baseline.CompositeRisk:F1} " +
-                      $"(rule scorer said {ruleScorerForSubScores?.Score(f).CompositeRisk:F1})");
+                      $"(rule scorer said {ruleComposite:F1})");
 
             return baseline;
         }

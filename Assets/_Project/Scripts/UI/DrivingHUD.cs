@@ -51,13 +51,18 @@ namespace IDS.UI
         private void OnEnable()
         {
             SessionEvents.PhaseChanged += OnPhaseChanged;
-            SessionEvents.CountryProfileChanged += _ => RefreshProfileLabels();
+            SessionEvents.CountryProfileChanged += OnCountryProfileChanged;
         }
 
         private void OnDisable()
         {
             SessionEvents.PhaseChanged -= OnPhaseChanged;
+            SessionEvents.CountryProfileChanged -= OnCountryProfileChanged;
         }
+
+        // A named handler, not a lambda. A lambda cannot be unsubscribed, so the
+        // subscription survives scene reloads and fires on a destroyed object.
+        private void OnCountryProfileChanged(string profileId) => RefreshProfileLabels();
 
         private void OnPhaseChanged(SessionPhase phase)
         {

@@ -66,7 +66,7 @@ namespace IDS.Telemetry
             _lane    = laneRef as ILaneReference   ?? ServiceRegistry.Require<ILaneReference>("Ananya");
             if (headTransform == null && Camera.main != null) headTransform = Camera.main.transform;
             mirrorDetector ??= GetComponent<MirrorCheckDetector>();
-            _profile ??= FindObjectOfType<CountryProfileHolder>();
+            _profile ??= FindFirstObjectByType<CountryProfileHolder>();
         }
 
         private void OnEnable()

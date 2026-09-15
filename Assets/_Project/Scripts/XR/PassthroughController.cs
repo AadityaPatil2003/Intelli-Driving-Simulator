@@ -41,7 +41,7 @@ namespace IDS.XR
         {
             _camera = GetComponent<Camera>();
             if (cameraManager == null) cameraManager = GetComponent<ARCameraManager>();
-            if (arSession == null)     arSession = FindObjectOfType<ARSession>();
+            if (arSession == null)     arSession = FindFirstObjectByType<ARSession>();
         }
 
         private IEnumerator Start()
