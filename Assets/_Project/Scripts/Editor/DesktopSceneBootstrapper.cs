@@ -417,7 +417,7 @@ namespace IDS.EditorTools
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
 
-            if (Object.FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
+            if (Object.FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>(FindObjectsInactive.Exclude) == null)
             {
                 new GameObject("EventSystem",
                     typeof(UnityEngine.EventSystems.EventSystem),

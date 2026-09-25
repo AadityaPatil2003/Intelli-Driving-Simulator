@@ -60,7 +60,7 @@ namespace IDS.Scenarios
             scenarioId = "cyclist_blind_spot";
             probesSkill = SkillArea.MirrorAwareness;
 
-            mirrorDetector ??= FindFirstObjectByType<MirrorCheckDetector>();
+            mirrorDetector ??= FindFirstObjectByType<MirrorCheckDetector>(FindObjectsInactive.Exclude);
             countryProfiles ??= ServiceRegistry.Resolve<CountryProfileManager>();
         }
 

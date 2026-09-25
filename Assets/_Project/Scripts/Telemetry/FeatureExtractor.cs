@@ -36,8 +36,8 @@ namespace IDS.Telemetry
         private void Start()
         {
             recorder ??= ServiceRegistry.Resolve<TelemetryRecorder>();
-            mirrorDetector ??= FindFirstObjectByType<MirrorCheckDetector>();
-            gapDetector ??= FindFirstObjectByType<GapAcceptanceDetector>();
+            mirrorDetector ??= FindFirstObjectByType<MirrorCheckDetector>(FindObjectsInactive.Exclude);
+            gapDetector ??= FindFirstObjectByType<GapAcceptanceDetector>(FindObjectsInactive.Exclude);
         }
 
         public DriverFeatureSet Extract()
