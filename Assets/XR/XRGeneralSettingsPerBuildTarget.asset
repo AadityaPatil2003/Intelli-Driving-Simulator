@@ -49,6 +49,24 @@ MonoBehaviour:
     settings: {fileID: -407397590941411797}
   - buildTarget: 13
     settings: {fileID: 3714942195682465718}
+  - buildTarget: 7
+    settings: {fileID: -2290440817465752670}
+--- !u!114 &436335800092554470
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4c3631f5e58749a59194e0cf6baf6d5, type: 3}
+  m_Name: Android Providers
+  m_EditorClassIdentifier: Unity.XR.Management::UnityEngine.XR.Management.XRManagerSettings
+  m_RequiresSettingsUpdate: 0
+  m_AutomaticLoading: 0
+  m_AutomaticRunning: 0
+  m_Loaders: []
 --- !u!114 &3714942195682465718
 MonoBehaviour:
   m_ObjectHideFlags: 0
