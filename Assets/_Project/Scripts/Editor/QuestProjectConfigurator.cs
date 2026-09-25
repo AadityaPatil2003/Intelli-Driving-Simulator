@@ -46,6 +46,10 @@ namespace IDS.EditorTools
         private const string CompanyName = "RMIT VrOoOm";
         private const string ProductName = "Intelli-Driving-Simulator";
 
+        // XRSettingsKey is deprecated in XR Plug-in Management
+        // 4.7, but the underlying EditorBuildSettings config key is unchanged.
+        private const string XRSettingsKey = "com.unity.xr.management.loader_settings";
+
         private const string OpenXRLoaderType = "UnityEngine.XR.OpenXR.OpenXRLoader";
         private const string SimulationLoaderType = "UnityEngine.XR.Simulation.SimulationLoader";
 
@@ -109,11 +113,7 @@ namespace IDS.EditorTools
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel32;
             log.Add("minimum API level → 32");
 
-            // 2 = "Both". The keyboard provider uses the legacy Input class and the
-            // XR rig uses the new Input System, so both handlers must stay enabled.
-            PlayerSettings.SetPropertyInt("activeInputHandler", 2, BuildTargetGroup.Android);
-            PlayerSettings.SetPropertyInt("activeInputHandler", 2, BuildTargetGroup.Standalone);
-            log.Add("active input handling → Both");
+            ConfigureActiveInputHandling(log);
 
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
 
@@ -121,10 +121,56 @@ namespace IDS.EditorTools
             log.Add("texture compression → ASTC");
         }
 
+        /// <summary>
+        /// Active Input Handling is a single PROJECT-WIDE setting, not a
+        /// per-platform one. Calling PlayerSettings.SetPropertyInt with a
+        /// BuildTargetGroup produces "Unknown Property: 'Android::activeInputHandler'"
+        /// because no per-target variant exists. It has to be written through the
+        /// serialized ProjectSettings object.
+        ///
+        /// It must be "Both": KeyboardInputProvider uses the legacy Input class,
+        /// while the XR rig's TrackedPoseDriver uses the new Input System.
+        /// </summary>
+        private static void ConfigureActiveInputHandling(List<string> log)
+        {
+            const int both = 2;   // 0 = Input Manager, 1 = Input System, 2 = Both
+
+            var assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/ProjectSettings.asset");
+            if (assets == null || assets.Length == 0)
+            {
+                log.Add("!! could not open ProjectSettings.asset — set Active Input " +
+                        "Handling to 'Both' by hand in Player settings.");
+                return;
+            }
+
+            var so = new SerializedObject(assets[0]);
+            var prop = so.FindProperty("activeInputHandler");
+
+            if (prop == null)
+            {
+                log.Add("!! activeInputHandler not found — set Active Input Handling " +
+                        "to 'Both' by hand in Player settings.");
+                return;
+            }
+
+            if (prop.intValue == both)
+            {
+                log.Add("active input handling → already Both");
+                return;
+            }
+
+            int before = prop.intValue;
+            prop.intValue = both;
+            so.ApplyModifiedProperties();
+
+            log.Add($"active input handling → Both (was {before}) — " +
+                    "RESTART UNITY for this to take effect");
+        }
+
         private static void ConfigureXRLoaders(List<string> log)
         {
             if (!EditorBuildSettings.TryGetConfigObject(
-                    XRGeneralSettings.k_SettingsKey,
+                    XRSettingsKey,
                     out XRGeneralSettingsPerBuildTarget perTarget) || perTarget == null)
             {
                 log.Add("!! XRGeneralSettingsPerBuildTarget not found. Open " +
@@ -156,7 +202,7 @@ namespace IDS.EditorTools
             // needs no XR runtime at all, so the correct setting is neither.
             var standaloneSettings = perTarget.SettingsForBuildTarget(BuildTargetGroup.Standalone);
             var standaloneManager = standaloneSettings != null
-                ? standaloneSettings.AssignedSettings : null;
+                ? standaloneSettings.Manager : null;
 
             if (standaloneManager != null)
             {
@@ -249,20 +295,45 @@ namespace IDS.EditorTools
         }
 
         /// <summary>
-        /// OpenXR features are per-package assets whose concrete types vary by
-        /// package version, so rather than guessing type names this enumerates
-        /// what is actually installed, enables anything whose name clearly matches
-        /// what this project needs, and prints the rest for manual verification.
+        /// Reports which OpenXR features are enabled for Android, and turns on the
+        /// ones this project needs where it can.
+        ///
+        /// Uses reflection because the OpenXR feature types are per-package and
+        /// change names between package versions. Two things this has to be careful
+        /// about, both of which broke earlier versions of this script:
+        ///
+        ///   - OpenXRSettings declares BOTH GetFeatures() and GetFeatures&lt;T&gt;(),
+        ///     so Type.GetMethod("GetFeatures", Type[]) throws
+        ///     AmbiguousMatchException. The method has to be picked explicitly.
+        ///   - AppDomain.GetAssemblies() can return unloaded assemblies in Unity;
+        ///     Type.GetType with an assembly-qualified name avoids the scan.
+        ///
+        /// This is informational only, so the whole thing is wrapped: a failure
+        /// here must never abort the configuration that ran before it.
         /// </summary>
         private static void ReportOpenXRFeatures(List<string> log)
         {
-            var settingsType = System.AppDomain.CurrentDomain.GetAssemblies()
-                .SelectMany(a => { try { return a.GetTypes(); } catch { return new System.Type[0]; } })
-                .FirstOrDefault(t => t.FullName == "UnityEngine.XR.OpenXR.OpenXRSettings");
+            try
+            {
+                ReportOpenXRFeaturesUnsafe(log);
+            }
+            catch (System.Exception e)
+            {
+                log.Add($"!! could not read the OpenXR feature list ({e.GetType().Name}). " +
+                        "Everything above still applied. Verify features by hand under " +
+                        "XR Plug-in Management → OpenXR → Android.");
+            }
+        }
+
+        private static void ReportOpenXRFeaturesUnsafe(List<string> log)
+        {
+            var settingsType =
+                System.Type.GetType("UnityEngine.XR.OpenXR.OpenXRSettings, Unity.XR.OpenXR")
+                ?? System.Type.GetType("UnityEngine.XR.OpenXR.OpenXRSettings");
 
             if (settingsType == null)
             {
-                log.Add("!! OpenXR package types not found — is the OpenXR Plugin installed?");
+                log.Add("!! OpenXR types not found — is the OpenXR Plugin installed?");
                 return;
             }
 
@@ -275,71 +346,70 @@ namespace IDS.EditorTools
                 return;
             }
 
-            object androidSettings;
-            try
-            {
-                androidSettings = getSettings.Invoke(null, new object[] { BuildTargetGroup.Android });
-            }
-            catch (System.Exception e)
-            {
-                log.Add($"!! could not read OpenXR Android settings: {e.Message}");
-                return;
-            }
+            object androidSettings = getSettings.Invoke(null, new object[] { BuildTargetGroup.Android });
 
             if (androidSettings == null)
             {
-                log.Add("!! no OpenXR settings for Android yet. Tick OpenXR under " +
-                        "Project Settings → XR Plug-in Management → Android, then re-run.");
+                log.Add("!! no OpenXR settings for Android. Tick OpenXR under " +
+                        "XR Plug-in Management → Android, then re-run.");
                 return;
             }
 
-            var featuresProp = settingsType.GetMethod("GetFeatures", new System.Type[0]);
-            if (featuresProp == null)
+            // Pick the non-generic, parameterless GetFeatures() explicitly.
+            var getFeatures = settingsType
+                .GetMethods(System.Reflection.BindingFlags.Public |
+                            System.Reflection.BindingFlags.Instance)
+                .FirstOrDefault(m => m.Name == "GetFeatures"
+                                     && !m.IsGenericMethod
+                                     && m.GetParameters().Length == 0);
+
+            if (getFeatures == null)
             {
-                log.Add("!! OpenXR feature list not readable — verify by hand.");
+                log.Add("!! OpenXR feature list not readable — verify features by hand.");
                 return;
             }
 
-            var features = featuresProp.Invoke(androidSettings, null) as System.Array;
+            var features = getFeatures.Invoke(androidSettings, null) as System.Array;
+
             if (features == null || features.Length == 0)
             {
                 log.Add("!! no OpenXR features found for Android.");
                 return;
             }
 
-            string[] wanted = { "passthrough", "hand tracking", "meta quest", "oculus touch" };
-            var enabled = new List<string>();
-            var available = new List<string>();
+            string[] wanted = { "passthrough", "hand tracking subsystem", "meta quest support" };
+            var turnedOn = new List<string>();
+            var listing = new List<string>();
 
             foreach (object feature in features)
             {
                 if (feature == null) continue;
 
                 var type = feature.GetType();
-                var nameField = type.GetProperty("name") ?? type.GetProperty("nameUi");
-                string name = nameField?.GetValue(feature) as string ?? type.Name;
-
                 var enabledProp = type.GetProperty("enabled");
-                bool isEnabled = enabledProp != null && (bool)enabledProp.GetValue(feature);
+                string name = (feature as Object)?.name ?? type.Name;
 
-                available.Add($"{(isEnabled ? "[x]" : "[ ]")} {name}");
+                bool isEnabled = enabledProp != null &&
+                                 enabledProp.CanRead &&
+                                 (bool)enabledProp.GetValue(feature);
 
-                if (enabledProp == null || !enabledProp.CanWrite) continue;
+                listing.Add($"{(isEnabled ? "[x]" : "[ ]")} {name}");
+
+                if (isEnabled || enabledProp == null || !enabledProp.CanWrite) continue;
 
                 string lower = name.ToLowerInvariant();
-                if (wanted.Any(w => lower.Contains(w)) && !isEnabled)
-                {
-                    enabledProp.SetValue(feature, true);
-                    EditorUtility.SetDirty(feature as Object);
-                    enabled.Add(name);
-                }
+                if (!wanted.Any(w => lower.Contains(w))) continue;
+
+                enabledProp.SetValue(feature, true);
+                if (feature is Object unityObject) EditorUtility.SetDirty(unityObject);
+                turnedOn.Add(name);
             }
 
-            if (enabled.Count > 0)
-                log.Add("OpenXR features enabled → " + string.Join(", ", enabled));
+            if (turnedOn.Count > 0)
+                log.Add("OpenXR features enabled → " + string.Join(", ", turnedOn));
 
-            log.Add("OpenXR Android features present (VERIFY THESE BY HAND):\n    " +
-                    string.Join("\n    ", available));
+            log.Add("OpenXR Android features (VERIFY THESE):\n    " +
+                    string.Join("\n    ", listing));
         }
 
         // ------------------------------------------------------------------ //
@@ -372,7 +442,7 @@ namespace IDS.EditorTools
             if (string.IsNullOrEmpty(id) || id.Contains("DefaultCompany"))
                 problems.Add($"Package name is still '{id}'.");
 
-            if (EditorBuildSettings.TryGetConfigObject(XRGeneralSettings.k_SettingsKey,
+            if (EditorBuildSettings.TryGetConfigObject(XRSettingsKey,
                     out XRGeneralSettingsPerBuildTarget perTarget) && perTarget != null)
             {
                 var androidSettings = perTarget.SettingsForBuildTarget(BuildTargetGroup.Android);
