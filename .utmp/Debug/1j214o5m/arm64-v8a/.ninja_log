@@ -1,0 +1,12 @@
+# ninja log v5
+11	127	1790322081054705238	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	377fc97da0c02630
+128	221	1790322081131006933	/Users/aadityapatil/Desktop/Sem2/Mixed Reality/Intelli-Driving-Simulator/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/Debug/1j214o5m/obj/arm64-v8a/libswappywrapper.so	6b0b995419d69b62
+4	727	1790322081651336334	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	b9abf3bd9afea677
+8	753	1790322081674841212	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	7e9f8d27b57d1e08
+1	783	1790322081707916958	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	9484f632625c1468
+3	792	1790322081716958948	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	1a957bddaa7b47ed
+10	816	1790322081733550134	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	1403451244e69760
+11	828	1790322081750250278	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	d30b3fe5dbaf27eb
+0	857	1790322081779405884	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	543290ff11cbd0d4
+6	894	1790322081817811066	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	b03d52f217441df4
+895	956	1790322081878485371	/Users/aadityapatil/Desktop/Sem2/Mixed Reality/Intelli-Driving-Simulator/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/Debug/1j214o5m/obj/arm64-v8a/libgame.so	77bf6075325c987
