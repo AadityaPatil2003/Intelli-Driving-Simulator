@@ -15,4 +15,3 @@
 /Users/aadityapatil/Desktop/Sem2/Mixed Reality/Intelli-Driving-Simulator/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UnityToGAConfigurationCallbacks.h
 /Users/aadityapatil/Desktop/Sem2/Mixed Reality/Intelli-Driving-Simulator/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UnityToGAKeyEventCallbacks.h
 /Users/aadityapatil/Desktop/Sem2/Mixed Reality/Intelli-Driving-Simulator/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/UnityToGAMotionEventCallbacks.h
-/Users/aadityapatil/Desktop/Sem2/Mixed Reality/Intelli-Driving-Simulator/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/FramePacing/UnitySwappyWrapper.h

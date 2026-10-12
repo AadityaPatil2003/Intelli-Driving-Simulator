@@ -126,6 +126,27 @@ namespace IDS.UI
                 .RecordEvent("alert_shown", $"{priority}|{message}");
         }
 
+        /// <summary>
+        /// Takes a prompt down the moment it has been obeyed.
+        ///
+        /// A banner reading CHECK MIRROR that stays up for its full 2.2 s after
+        /// the driver has already checked the mirror teaches them the prompt is
+        /// not listening, and the next one gets ignored. Showing the result of
+        /// the action instead is the whole point of a live coach.
+        /// </summary>
+        public void DismissIfShowing(string message, string replacement = null)
+        {
+            if (_hideAt <= 0f) return;
+            if (alertText == null || alertText.text != message) return;
+
+            if (string.IsNullOrEmpty(replacement)) { Hide(); return; }
+
+            alertText.text = replacement;
+            alertText.color = infoColour;
+            _currentPriority = AlertPriority.Info;
+            _hideAt = Time.time + 1.1f;
+        }
+
         private void Hide()
         {
             if (alertRoot != null) alertRoot.SetActive(false);

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,18 +10,27 @@ namespace IDS.UI
 {
     /// <summary>
     /// The post-drive report. The design decision this panel embodies: the report
-    /// is the INPUT to the next session, not the end of this one. So the last
-    /// thing on it is not a score, it is what happens next time.
+    /// is the INPUT to the next session, not the end of this one, so the last
+    /// thing on it is not a score — it is what happens next time.
     ///
-    /// Every number here comes from Anushka's scoring system. Nothing is
-    /// hard-coded — if a value looks wrong, the bug is upstream, and hard-coding
-    /// a plausible-looking number here would hide it.
+    /// Every number comes from the scoring system. Nothing is hard-coded. If a
+    /// value looks wrong the bug is upstream, and putting a plausible-looking
+    /// number here would hide it.
     ///
-    /// OWNER: Omkar. Data: Anushka.
+    /// THIS COMPONENT MUST LIVE ON AN ALWAYS-ACTIVE OBJECT, with panelRoot
+    /// pointing at the panel it fills. OnEnable never runs on a component inside
+    /// a deactivated hierarchy, so a report panel that starts switched off and
+    /// holds its own subscription never receives SessionEnded and shows last
+    /// session's numbers, or none at all. The scene builder puts this on the UI
+    /// root for that reason.
+    ///
+    /// It does not control its own visibility either — UIManager owns that, keyed
+    /// on session phase. Two components deciding when the report is up is how it
+    /// ended up both blank and visible at once.
     /// </summary>
     public class PostDriveReportPanel : MonoBehaviour
     {
-        [Header("Root")]
+        [Header("Root (filled, not shown — UIManager shows it)")]
         [SerializeField] private GameObject panelRoot;
 
         [Header("Headline")]
@@ -50,30 +58,33 @@ namespace IDS.UI
         [SerializeField] private TMP_Text scenarioSummaryText;
 
         [Header("Bar colours")]
-        [SerializeField] private Color goodColour = new Color(0.3f, 0.8f, 0.5f);
-        [SerializeField] private Color okColour = new Color(0.95f, 0.75f, 0.3f);
-        [SerializeField] private Color poorColour = new Color(0.9f, 0.4f, 0.35f);
+        [SerializeField] private Color goodColour = new Color(0.30f, 0.80f, 0.50f);
+        [SerializeField] private Color okColour = new Color(0.95f, 0.75f, 0.30f);
+        [SerializeField] private Color poorColour = new Color(0.90f, 0.40f, 0.35f);
 
         [Header("Sources")]
         [SerializeField] private DriverProfileManager profileManager;
         [SerializeField] private ScenarioManager scenarioManager;
 
+        private void Awake() => ServiceRegistry.Register(this);
+
         private void Start()
         {
             profileManager ??= ServiceRegistry.Resolve<DriverProfileManager>();
             scenarioManager ??= ServiceRegistry.Resolve<ScenarioManager>();
-            SetVisible(false);
         }
 
-        private void OnEnable()  => SessionEvents.SessionEnded += OnSessionEnded;
+        private void OnEnable() => SessionEvents.SessionEnded += OnSessionEnded;
         private void OnDisable() => SessionEvents.SessionEnded -= OnSessionEnded;
 
         private void OnSessionEnded(RiskAssessment a) => Display(a);
 
+        /// <summary>
+        /// Fills the panel. Does not show it — the phase change that follows
+        /// SessionEnded is what makes it visible.
+        /// </summary>
         public void Display(RiskAssessment a)
         {
-            SetVisible(true);
-
             if (compositeRiskText != null)
                 compositeRiskText.text = $"{Mathf.RoundToInt(a.CompositeRisk)} / 100";
 
@@ -93,7 +104,7 @@ namespace IDS.UI
             if (weakestSkillText != null)
                 weakestSkillText.text = SkillAreaNames.Friendly(a.WeakestSkill);
 
-            var profile = profileManager?.Current;
+            DriverProfile profile = profileManager?.Current;
 
             if (recommendationText != null)
                 recommendationText.text = !string.IsNullOrEmpty(profile?.recommendedTraining)
@@ -102,6 +113,31 @@ namespace IDS.UI
 
             if (trendText != null) trendText.text = BuildTrendLine(profile);
             if (scenarioSummaryText != null) scenarioSummaryText.text = BuildScenarioSummary();
+
+            Debug.Log($"[Report] composite={a.CompositeRisk:F1} ({RiskBands.Label(a.Band)}) " +
+                      $"weakest={a.WeakestSkill} scorer={a.ScorerUsed}");
+        }
+
+        /// <summary>
+        /// Blanks the panel when the driver leaves it, so a later drive that fails
+        /// to produce a score cannot show the previous drive's numbers as if they
+        /// were new.
+        /// </summary>
+        public void Clear()
+        {
+            if (compositeRiskText != null) compositeRiskText.text = "—";
+            if (riskBandText != null) riskBandText.text = "";
+            if (weakestSkillText != null) weakestSkillText.text = "";
+            if (recommendationText != null) recommendationText.text = "";
+            if (trendText != null) trendText.text = "";
+            if (scenarioSummaryText != null) scenarioSummaryText.text = "";
+
+            SetBar(compositeRiskBar, 0f, true);
+            SetSkill(laneKeepingBar, laneKeepingValue, 0f, blank: true);
+            SetSkill(steeringBar, steeringValue, 0f, blank: true);
+            SetSkill(mirrorBar, mirrorValue, 0f, blank: true);
+            SetSkill(gapBar, gapValue, 0f, blank: true);
+            SetSkill(hazardBar, hazardValue, 0f, blank: true);
         }
 
         private string BuildTrendLine(DriverProfile profile)
@@ -110,6 +146,7 @@ namespace IDS.UI
                 return "First recorded session — no comparison yet.";
 
             float delta = profile.RiskTrend();
+
             if (Mathf.Abs(delta) < 2f)
                 return $"About the same as last session (session {profile.sessionsCompleted}).";
 
@@ -121,15 +158,26 @@ namespace IDS.UI
         private string BuildScenarioSummary()
         {
             var results = scenarioManager?.SessionResults;
+
             if (results == null || results.Count == 0)
-                return "No hazards occurred in this session.";
+                return "No hazards occurred in this session, so hazard response " +
+                       "was not measured.";
 
             var sb = new StringBuilder();
+
+            int shown = 0;
+
             foreach (ScenarioResult r in results)
             {
+                // Abandoned hazards never happened. Listing one as "close, no
+                // braking response" blames the driver for a hazard the simulator
+                // failed to stage.
+                if (!r.Completed) continue;
+
+                shown++;
                 string label = r.ScenarioId.Replace('_', ' ');
-                string outcome = r.Collision
-                    ? "collision"
+
+                string outcome = r.Collision ? "collision"
                     : r.SuccessfulAvoidance ? "avoided" : "close";
 
                 string react = r.ReactionTime >= 0f
@@ -143,18 +191,25 @@ namespace IDS.UI
                         ? "   mirror checked before moving over"
                         : "   moved over WITHOUT a mirror check");
             }
+
+            if (shown == 0)
+                return "No hazards occurred in this session, so hazard response " +
+                       "was not measured.";
+
             return sb.ToString().TrimEnd();
         }
 
-        private void SetSkill(Image bar, TMP_Text label, float score0to100)
+        private void SetSkill(Image bar, TMP_Text label, float score0to100, bool blank = false)
         {
-            SetBar(bar, score0to100 / 100f, invertColour: false);
-            if (label != null) label.text = $"{Mathf.RoundToInt(score0to100)} / 100";
+            SetBar(bar, blank ? 0f : score0to100 / 100f, invertColour: false);
+            if (label != null)
+                label.text = blank ? "—" : $"{Mathf.RoundToInt(score0to100)} / 100";
         }
 
         private void SetBar(Image bar, float fill01, bool invertColour)
         {
             if (bar == null) return;
+
             fill01 = Mathf.Clamp01(fill01);
             bar.fillAmount = fill01;
 
@@ -164,23 +219,37 @@ namespace IDS.UI
                       : poorColour;
         }
 
-        public void SetVisible(bool visible)
+        /// <summary>The panel this component fills. UIManager shows and hides it.</summary>
+        public GameObject PanelRoot => panelRoot;
+
+        public void ConfigureRoot(GameObject root) => panelRoot = root;
+
+        public void ConfigureHeadline(TMP_Text composite, TMP_Text band, Image bar)
         {
-            if (panelRoot != null) panelRoot.SetActive(visible);
+            compositeRiskText = composite;
+            riskBandText = band;
+            compositeRiskBar = bar;
         }
 
-        /// <summary>Wired to the "Done" button.</summary>
-        public void OnDismiss()
+        public void ConfigureSkill(SkillArea skill, Image bar, TMP_Text value)
         {
-            SetVisible(false);
-            ServiceRegistry.Resolve<SessionManager>()?.OnReportDismissed();
+            switch (skill)
+            {
+                case SkillArea.LaneKeeping: laneKeepingBar = bar; laneKeepingValue = value; break;
+                case SkillArea.SteeringSmoothness: steeringBar = bar; steeringValue = value; break;
+                case SkillArea.MirrorAwareness: mirrorBar = bar; mirrorValue = value; break;
+                case SkillArea.GapAcceptance: gapBar = bar; gapValue = value; break;
+                case SkillArea.HazardResponse: hazardBar = bar; hazardValue = value; break;
+            }
         }
 
-        /// <summary>Wired to the "Drive again" button — the loop closing.</summary>
-        public void OnDriveAgain()
+        public void ConfigureNarrative(TMP_Text weakest, TMP_Text recommendation,
+                                       TMP_Text trend, TMP_Text scenarios)
         {
-            SetVisible(false);
-            ServiceRegistry.Resolve<SessionManager>()?.RestartSession();
+            weakestSkillText = weakest;
+            recommendationText = recommendation;
+            trendText = trend;
+            scenarioSummaryText = scenarios;
         }
     }
 }

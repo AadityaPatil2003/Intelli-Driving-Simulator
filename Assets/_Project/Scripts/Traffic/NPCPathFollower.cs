@@ -19,6 +19,16 @@ namespace IDS.Traffic
         [SerializeField] private bool faceDirectionOfTravel = true;
         [SerializeField] private bool stopAtEnd = true;
 
+        /// <summary>
+        /// Exposed so a scenario can move the route to where the driver actually
+        /// is. A hazard pinned to a fixed world z only fires if the car happens to
+        /// still be short of it when the scenario arms, and scenarios arm one at a
+        /// time in an adaptive order — so a hazard placed second or third was
+        /// regularly armed with the car already past it, and simply never fired.
+        /// </summary>
+        public Transform StartPoint => startPoint;
+        public Transform EndPoint => endPoint;
+
         public bool IsMoving { get; private set; }
         public bool HasArrived { get; private set; }
         public float SpeedMetresPerSec
@@ -27,7 +37,37 @@ namespace IDS.Traffic
             set => speedMetresPerSec = Mathf.Max(0f, value);
         }
 
-        private void Awake() => SnapToStart();
+        // The authored route, captured before any scenario slides it up the road
+        // to meet the driver. Without this a second drive inherits the first
+        // drive's displaced anchors: the cyclist starts parked in the
+        // carriageway where the last hazard left it, and any collision with it
+        // is charged to the new driver.
+        private Vector3 _homeStart;
+        private Vector3 _homeEnd;
+        private bool _homeCaptured;
+
+        private void Awake()
+        {
+            CaptureHome();
+            SnapToStart();
+        }
+
+        private void CaptureHome()
+        {
+            if (_homeCaptured) return;
+            if (startPoint != null) _homeStart = startPoint.position;
+            if (endPoint != null) _homeEnd = endPoint.position;
+            _homeCaptured = true;
+        }
+
+        /// <summary>Puts the route back where the scene builder authored it.</summary>
+        public void RestoreHomeRoute()
+        {
+            if (!_homeCaptured) return;
+            if (startPoint != null) startPoint.position = _homeStart;
+            if (endPoint != null) endPoint.position = _homeEnd;
+            SnapToStart();
+        }
 
         private void Update()
         {

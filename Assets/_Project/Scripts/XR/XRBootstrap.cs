@@ -6,68 +6,89 @@ using IDS.Core;
 namespace IDS.XR
 {
     /// <summary>
-    /// Brings XR up explicitly rather than relying on "Initialize XR on Startup",
-    /// and logs loudly when it fails. On a shared-headset project the difference
-    /// between "the app is broken" and "XR did not initialise" costs about forty
-    /// minutes of lab time each occurrence, so it is worth the ceremony.
+    /// Brings XR up and says loudly when it does not come up. On a shared-headset
+    /// project the difference between "the app is broken" and "XR did not
+    /// initialise" costs about forty minutes of lab time per occurrence, so the
+    /// ceremony is worth it.
     ///
-    /// Also reports the active loader, which is how you catch the case where the
-    /// Oculus XR Plugin sneaks back in alongside OpenXR.
+    /// It also names the active loader, which is how you catch a second XR plugin
+    /// sneaking in alongside OpenXR — the symptom of that is a black display with
+    /// no error at all.
     ///
-    /// OWNER: Aaditya.
+    /// It does not fight XR Plug-in Management's own "Initialize XR on Startup":
+    /// if a loader is already active it leaves it alone and only reports.
     /// </summary>
     public class XRBootstrap : MonoBehaviour
     {
         [SerializeField] private bool initialiseOnStart = true;
-        [Tooltip("Target display refresh. Quest 3 supports 72/80/90/120. Leave at " +
-                 "72 until every mandatory feature works.")]
+
+        [Tooltip("Target display refresh. Quest 3 supports 72/80/90/120. Raise " +
+                 "this only after a full session has held frame rate at 72.")]
         [SerializeField] private int targetFrameRate = 72;
 
         public bool XRActive { get; private set; }
+
+        // Whether THIS component initialised the loader. If XR was already
+        // running when we arrived, tearing it down on destroy kills the display
+        // for whatever started it — a black headset with no error anywhere.
+        private bool _startedLoaderHere;
         public string ActiveLoader { get; private set; } = "none";
 
         private IEnumerator Start()
         {
             Application.targetFrameRate = targetFrameRate;
+            QualitySettings.vSyncCount = 0;   // the compositor paces frames, not vSync
+
+            ServiceRegistry.Register(this);
 
             if (!initialiseOnStart) yield break;
 
-            var mgr = XRGeneralSettings.Instance?.Manager;
-            if (mgr == null)
+            XRManagerSettings manager = XRGeneralSettings.Instance?.Manager;
+            if (manager == null)
             {
-                Debug.LogError("[XR] XRGeneralSettings.Manager is null. XR Plug-in " +
-                               "Management is not configured for this build target.");
+                Debug.LogError("[XR] XRGeneralSettings.Manager is null — XR Plug-in " +
+                               "Management has no settings for this build target. " +
+                               "Project Settings → XR Plug-in Management → Android, " +
+                               "tick OpenXR.");
                 yield break;
             }
 
-            if (mgr.activeLoader == null)
+            if (manager.activeLoader == null)
             {
-                yield return mgr.InitializeLoader();
+                yield return manager.InitializeLoader();
 
-                if (mgr.activeLoader == null)
+                if (manager.activeLoader == null)
                 {
-                    Debug.LogError("[XR] no active loader after initialisation. " +
-                                   "Check Project Settings → XR Plug-in Management → " +
-                                   "Android → OpenXR is ticked, and that the Meta " +
-                                   "Quest feature group is enabled.");
+                    Debug.LogError("[XR] no active loader after initialisation. Check " +
+                                   "Project Settings → XR Plug-in Management → Android " +
+                                   "→ OpenXR is ticked, and that under OpenXR the Meta " +
+                                   "Quest feature group and the Oculus Touch " +
+                                   "controller profile are both enabled. In the editor " +
+                                   "without a headset this message is expected.");
                     yield break;
                 }
+
+                manager.StartSubsystems();
+                _startedLoaderHere = true;
             }
 
-            mgr.StartSubsystems();
             XRActive = true;
-            ActiveLoader = mgr.activeLoader.name;
-            Debug.Log($"[XR] active loader: {ActiveLoader} @ {targetFrameRate} FPS target");
+            ActiveLoader = manager.activeLoader.name;
 
-            ServiceRegistry.Register(this);
+            Debug.Log($"[XR] active loader: {ActiveLoader}, target {targetFrameRate} FPS, " +
+                      $"display {UnityEngine.XR.XRSettings.eyeTextureWidth}×" +
+                      $"{UnityEngine.XR.XRSettings.eyeTextureHeight} per eye");
         }
 
         private void OnDestroy()
         {
-            var mgr = XRGeneralSettings.Instance?.Manager;
-            if (mgr == null || !XRActive) return;
-            mgr.StopSubsystems();
-            mgr.DeinitializeLoader();
+            if (!XRActive || !_startedLoaderHere) return;
+
+            XRManagerSettings manager = XRGeneralSettings.Instance?.Manager;
+            if (manager == null) return;
+
+            manager.StopSubsystems();
+            manager.DeinitializeLoader();
             XRActive = false;
         }
     }

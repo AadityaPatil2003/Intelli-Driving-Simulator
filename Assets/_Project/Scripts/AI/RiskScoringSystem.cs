@@ -34,7 +34,7 @@ namespace IDS.AI
 
         private void Start()
         {
-            ruleScorer ??= GetComponent<RuleBasedRiskScorer>() ?? FindFirstObjectByType<RuleBasedRiskScorer>(FindObjectsInactive.Exclude);
+            ruleScorer ??= GetComponent<RuleBasedRiskScorer>() ?? FindAnyObjectByType<RuleBasedRiskScorer>(FindObjectsInactive.Exclude);
             classifierScorer ??= GetComponent<ClassifierRiskScorer>();
             featureExtractor ??= ServiceRegistry.Resolve<FeatureExtractor>();
             profileManager ??= ServiceRegistry.Resolve<DriverProfileManager>();

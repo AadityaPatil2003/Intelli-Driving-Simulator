@@ -1,17 +1,53 @@
-# Unity generated folders
+# ── Unity generated folders ───────────────────────────────────────────────
 [Ll]ibrary/
 [Tt]emp/
+[Oo]bj/
 [Ll]ogs/
 [Uu]serSettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# ── Build output ──────────────────────────────────────────────────────────
 [Bb]uild/
 [Bb]uilds/
+*.apk
+*.aab
+*.symbols.zip
 
-# macOS
-.DS_Store
+# Gradle / IL2CPP intermediate tree that Unity writes beside the project.
+.utmp/
+**/.utmp/
 
-# Visual Studio / VS Code
+# ── Runtime data written by the app when run in the Editor ────────────────
+/telemetry/
+/Sessions/
+/Profiles/
+ids_log.txt
+*.log
+
+# ── Asset Store / plugin noise ────────────────────────────────────────────
+/[Aa]ssets/AssetStoreTools*
+/[Aa]ssets/Plugins/Editor/JetBrains*
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+sysinfo.txt
+crashlytics-build.properties
+
+# ── Editors and OS ────────────────────────────────────────────────────────
 .vs/
 .vscode/
+.idea/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
 
-# Unity generated files
-sysinfo.txt
+# Local safety copies of the working tree (never committed)
+_backup/

@@ -1,6 +1,7 @@
 using UnityEngine;
 using IDS.Core;
 using IDS.AI;
+using IDS.Telemetry;
 
 namespace IDS.UI
 {
@@ -25,6 +26,11 @@ namespace IDS.UI
         [SerializeField] private float speedOverLimitTolerance = 5f;
         [SerializeField] private float speedSustainSeconds = 2f;
 
+        [Header("Mirror checks")]
+        [Tooltip("Prompt the driver if they have not checked the mirror the "
+                 + "current country treats as the priority one for this long.")]
+        [SerializeField] private float mirrorSilenceSeconds = 18f;
+
         [Header("Sources")]
         [SerializeField] private MonoBehaviour vehicleRef;   // IVehicleState
         [SerializeField] private MonoBehaviour laneRef;      // ILaneReference
@@ -32,15 +38,22 @@ namespace IDS.UI
 
         private IVehicleState _vehicle;
         private ILaneReference _lane;
+        private MirrorCheckDetector _mirrors;
+        private AlertManager _alerts;
         private float _laneViolationFor;
         private float _speedViolationFor;
         private bool _enabled;
+        private bool _hazardActive;
+        private bool _mirrorPromptUp;
+        private int _checksWhenPrompted;
 
         private void Start()
         {
             _vehicle = vehicleRef as IVehicleState ?? ServiceRegistry.Resolve<IVehicleState>();
             _lane = laneRef as ILaneReference ?? ServiceRegistry.Resolve<ILaneReference>();
             countryProfiles ??= ServiceRegistry.Resolve<CountryProfileManager>();
+            _mirrors = ServiceRegistry.Resolve<MirrorCheckDetector>();
+            _alerts = ServiceRegistry.Resolve<AlertManager>();
         }
 
         private void OnEnable()  => SessionEvents.PhaseChanged += OnPhaseChanged;
@@ -49,7 +62,13 @@ namespace IDS.UI
         private void OnPhaseChanged(SessionPhase phase)
         {
             _enabled = phase == SessionPhase.Driving || phase == SessionPhase.HazardActive;
-            if (!_enabled) { _laneViolationFor = 0f; _speedViolationFor = 0f; }
+            _hazardActive = phase == SessionPhase.HazardActive;
+            if (!_enabled)
+            {
+                _laneViolationFor = 0f;
+                _speedViolationFor = 0f;
+                _mirrorPromptUp = false;
+            }
         }
 
         private void Update()
@@ -58,11 +77,49 @@ namespace IDS.UI
 
             CheckLane();
             CheckSpeed();
+            CheckMirrors();
+        }
+
+        /// <summary>
+        /// Prompts for a mirror check, then takes the prompt down the instant one
+        /// happens — replaced by an acknowledgement rather than just vanishing,
+        /// so the driver can tell the difference between "obeyed" and "timed out".
+        /// </summary>
+        private void CheckMirrors()
+        {
+            if (_mirrors == null) return;
+
+            if (_mirrorPromptUp)
+            {
+                if (_mirrors.TotalChecks > _checksWhenPrompted)
+                {
+                    _mirrorPromptUp = false;
+                    _alerts?.DismissIfShowing("CHECK MIRROR", "GOOD CHECK");
+                }
+                return;
+            }
+
+            TrafficSide priority = countryProfiles?.Current != null
+                ? countryProfiles.Current.priorityMirror
+                : TrafficSide.Right;
+
+            if (_mirrors.SecondsSinceCheck(priority) < mirrorSilenceSeconds) return;
+
+            _checksWhenPrompted = _mirrors.TotalChecks;
+            _mirrorPromptUp = true;
+            AlertManager.CheckMirror();
         }
 
         private void CheckLane()
         {
             if (_lane == null) return;
+
+            // Silent during a hazard. Passing a cyclist REQUIRES leaving your
+            // lane, and the simulator telling you to maintain lane while also
+            // scoring you on whether you moved out safely is not just noise — it
+            // is two parts of the same system giving opposite instructions, and
+            // the driver has no way to know which one to obey.
+            if (_hazardActive) return;
 
             float offset = Mathf.Abs(_lane.GetSignedLaneOffset(_vehicle.Position));
 

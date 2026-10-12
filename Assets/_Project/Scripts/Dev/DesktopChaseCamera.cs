@@ -1,16 +1,22 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace IDS.Dev
 {
     /// <summary>
-    /// Desktop-only chase camera. Exists so the project is playable and
-    /// demonstrable without a headset. In the XR build this object is disabled
-    /// and the XR Origin camera takes over.
+    /// Desktop-only chase camera, so the project is playable and demonstrable
+    /// without a headset. It is NOT in the generated scene — the XR rig's camera
+    /// is the only camera there. Add this by hand to a spare GameObject when you
+    /// want to drive the simulator at a desk.
     ///
-    /// It also stands in as the "head transform" for the telemetry recorder and
-    /// the mirror detector, so head yaw is recorded rather than crashing on a
+    /// It can also stand in as the "head transform" for the telemetry recorder
+    /// and the mirror detector, so head yaw is recorded rather than crashing on a
     /// null reference. Mirror-check numbers from a desktop session are NOT
-    /// meaningful and must not be reported as if they were.
+    /// meaningful and must never be reported as if they were — a mouse-look yaw
+    /// is not a driver turning their head.
+    ///
+    /// Reads the Input System directly, so the project does not need the
+    /// deprecated Input Manager backend.
     /// </summary>
     public class DesktopChaseCamera : MonoBehaviour
     {
@@ -19,7 +25,11 @@ namespace IDS.Dev
         [SerializeField] private bool recentreWhenIdle = true;
 
         [Header("Free look — hold right mouse button")]
-        [SerializeField] private float lookSensitivity = 2.5f;
+        [Tooltip("Degrees per pixel of mouse movement. Mouse.delta is in pixels, " +
+                 "where the legacy Mouse X axis was pre-scaled, so this is much " +
+                 "smaller than the old sensitivity value.")]
+        [SerializeField] private float lookSensitivity = 0.12f;
+
         [SerializeField] private float maxYaw = 110f;
         [SerializeField] private float maxPitch = 45f;
         [SerializeField] private float recentreSpeed = 90f;
@@ -34,12 +44,14 @@ namespace IDS.Dev
 
             transform.position = target.TransformPoint(localOffset);
 
-            if (Input.GetMouseButton(1))
+            Mouse mouse = Mouse.current;
+            bool looking = mouse != null && mouse.rightButton.isPressed;
+
+            if (looking)
             {
-                _yaw = Mathf.Clamp(_yaw + Input.GetAxis("Mouse X") * lookSensitivity,
-                                   -maxYaw, maxYaw);
-                _pitch = Mathf.Clamp(_pitch - Input.GetAxis("Mouse Y") * lookSensitivity,
-                                     -maxPitch, maxPitch);
+                Vector2 delta = mouse.delta.ReadValue();
+                _yaw = Mathf.Clamp(_yaw + delta.x * lookSensitivity, -maxYaw, maxYaw);
+                _pitch = Mathf.Clamp(_pitch - delta.y * lookSensitivity, -maxPitch, maxPitch);
             }
             else if (recentreWhenIdle)
             {

@@ -91,7 +91,14 @@ namespace IDS.Core
         public float  FirstBrakeTime;       // -1 if the driver never braked
         public float  ReactionTime;         // -1 if no response
         public float  MinimumSpeed;
-        public float  MinimumDistance;      // to the hazard, metres
+        public float  MinimumDistance;      // to the hazard, metres; MaxValue = never measured
+
+        /// <summary>
+        /// False when nothing ever updated MinimumDistance, which leaves it at
+        /// float.MaxValue. Formatted straight into the report that printed a
+        /// 39-digit number across the driver's view.
+        /// </summary>
+        public bool HasMinimumDistance => MinimumDistance < 100000f;
         public bool   MirrorCheckPerformed;
         public bool   Collision;
         public bool   SuccessfulAvoidance;

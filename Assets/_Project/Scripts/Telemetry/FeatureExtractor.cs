@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 using IDS.Core;
 
@@ -6,19 +7,23 @@ namespace IDS.Telemetry
 {
     /// <summary>
     /// Turns a session's samples into the four core features plus supporting ones.
-    /// Every formula here has to be documented in the final report, so each one is
-    /// written out explicitly rather than hidden in a helper.
+    /// Every formula has to be defensible in the report, so each is written out
+    /// explicitly rather than hidden in a helper.
     ///
-    ///   lane_offset_rms   = sqrt(mean(laneOffset^2))                     metres
-    ///   steering_jerk     = rms of d²(steering)/dt², normalised           unitless
-    ///   mirror_check_freq = checks / minutes driven                       per minute
-    ///   gap_acceptance    = minimum accepted gap at the conflict point    seconds
+    ///   lane_offset_rms   = sqrt(mean(laneOffset²))                      metres
+    ///   steering_jerk     = rms of d²(steering)/dt², normalised          unitless
+    ///   mirror_check_freq = checks / minutes driven                      per minute
+    ///   gap_acceptance    = minimum accepted gap at the conflict point   seconds
     ///
     /// Why RMS and not mean-absolute for lane offset: RMS penalises a few large
     /// excursions more than constant small wobble, and a driver who drifts a full
-    /// half-lane twice is the case we care about.
+    /// half-lane twice is the case worth catching.
     ///
-    /// OWNER: Anushka.
+    /// UNMEASURED FEATURES RETURN −1, NOT 0. Gap acceptance and reaction time are
+    /// only defined if the session actually contained a junction and a hazard. A
+    /// zero would read as "instant reaction, zero gap" — the best and worst
+    /// possible values respectively — and the scorer must be able to tell the
+    /// difference between that and no data.
     /// </summary>
     public class FeatureExtractor : MonoBehaviour
     {
@@ -27,8 +32,9 @@ namespace IDS.Telemetry
         [SerializeField] private GapAcceptanceDetector gapDetector;
 
         [Header("Normalisation")]
-        [Tooltip("Steering jerk value treated as the practical maximum, used to " +
-                 "normalise into 0..1. Tune after internal pilot sessions.")]
+        [Tooltip("Steering jerk treated as the practical maximum, used to " +
+                 "normalise into 0..1. A project design parameter, tuned after " +
+                 "pilot sessions — not a published value.")]
         [SerializeField] private float steeringJerkReference = 40f;
 
         private void Awake() => ServiceRegistry.Register(this);
@@ -36,8 +42,8 @@ namespace IDS.Telemetry
         private void Start()
         {
             recorder ??= ServiceRegistry.Resolve<TelemetryRecorder>();
-            mirrorDetector ??= FindFirstObjectByType<MirrorCheckDetector>(FindObjectsInactive.Exclude);
-            gapDetector ??= FindFirstObjectByType<GapAcceptanceDetector>(FindObjectsInactive.Exclude);
+            mirrorDetector ??= ServiceRegistry.Resolve<MirrorCheckDetector>();
+            gapDetector ??= ServiceRegistry.Resolve<GapAcceptanceDetector>();
         }
 
         public DriverFeatureSet Extract()
@@ -46,49 +52,51 @@ namespace IDS.Telemetry
 
             if (recorder == null || recorder.Samples.Count < 2)
             {
-                Debug.LogWarning("[Features] fewer than 2 samples — returning empty " +
-                                 "feature set. Did the session actually record?");
+                Debug.LogWarning("[Features] fewer than 2 samples — returning an empty " +
+                                 "feature set. Did the session actually record? Check " +
+                                 "for a telemetry write error at session start.");
+                features.GapAcceptance = -1f;
+                features.ReactionTime = -1f;
                 return features;
             }
 
             List<TelemetrySample> s = recorder.Samples;
             float duration = Mathf.Max(0.001f, s[^1].t - s[0].t);
-            features.SessionDurationSec = duration;
 
+            features.SessionDurationSec = duration;
             features.LaneOffsetRms = LaneOffsetRms(s);
-            features.SteeringJerk  = SteeringJerk(s);
-            features.MeanSpeedKph  = MeanSpeed(s);
+            features.SteeringJerk = SteeringJerk(s);
+            features.MeanSpeedKph = MeanSpeed(s);
             features.CollisionCount = CountCollisions(s);
 
             features.MirrorCheckFreq = mirrorDetector != null
                 ? mirrorDetector.TotalChecks / (duration / 60f)
                 : 0f;
 
-            // -1 signals "not measured". The scorer must handle that, not assume 0.
             features.GapAcceptance = gapDetector != null && gapDetector.HasMeasurement
                 ? gapDetector.MinimumAcceptedGap()
                 : -1f;
 
             features.ReactionTime = MeanReactionTime();
-            features.SpeedOverLimitRatio = 0f; // set by the scorer, needs the profile
+            features.SpeedOverLimitRatio = 0f;   // filled in by the scorer, needs the profile
 
             Debug.Log($"[Features] {features}");
             return features;
         }
 
-        // ---- individual formulas --------------------------------------------
+        // ---- individual formulas ---------------------------------------------
 
         private static float LaneOffsetRms(List<TelemetrySample> s)
         {
             double sumSq = 0.0;
-            foreach (var x in s) sumSq += (double)x.laneOffset * x.laneOffset;
+            foreach (TelemetrySample x in s) sumSq += (double)x.laneOffset * x.laneOffset;
             return Mathf.Sqrt((float)(sumSq / s.Count));
         }
 
         private float SteeringJerk(List<TelemetrySample> s)
         {
             // First derivative: steering rate. Second: rate of change of rate.
-            // RMS of the second derivative, then normalised against a reference.
+            // RMS of the second derivative, normalised against a reference.
             if (s.Count < 3) return 0f;
 
             var rates = new float[s.Count - 1];
@@ -116,7 +124,7 @@ namespace IDS.Telemetry
         private static float MeanSpeed(List<TelemetrySample> s)
         {
             double sum = 0.0;
-            foreach (var x in s) sum += Mathf.Abs(x.speedKph);
+            foreach (TelemetrySample x in s) sum += Mathf.Abs(x.speedKph);
             return (float)(sum / s.Count);
         }
 
@@ -124,7 +132,7 @@ namespace IDS.Telemetry
         {
             int count = 0;
             bool wasColliding = false;
-            foreach (var x in s)
+            foreach (TelemetrySample x in s)
             {
                 if (x.collision && !wasColliding) count++;
                 wasColliding = x.collision;
@@ -138,17 +146,30 @@ namespace IDS.Telemetry
 
             float sum = 0f;
             int n = 0;
-            foreach (var e in recorder.Events)
+
+            foreach (TelemetryEvent e in recorder.Events)
             {
-                if (e.name != "hazard_resolved") continue;
+                if (e.name != "hazard_resolved" || string.IsNullOrEmpty(e.detail)) continue;
+
                 // detail format: "<id>|react=<value>|collision=<bool>"
                 foreach (string part in e.detail.Split('|'))
                 {
                     if (!part.StartsWith("react=")) continue;
-                    if (float.TryParse(part.Substring(6), out float r) && r >= 0f)
-                    { sum += r; n++; }
+
+                    // InvariantCulture to match how TelemetryRecorder writes it.
+                    // A default-culture parse would fail on a comma-decimal
+                    // locale, and the reaction time would silently become
+                    // "no response" — a measurement error that looks like driver
+                    // behaviour.
+                    if (float.TryParse(part.Substring(6), NumberStyles.Float,
+                                       CultureInfo.InvariantCulture, out float r) && r >= 0f)
+                    {
+                        sum += r;
+                        n++;
+                    }
                 }
             }
+
             return n == 0 ? -1f : sum / n;
         }
 
@@ -159,10 +180,20 @@ namespace IDS.Telemetry
         public float SpeedOverLimitRatio(float limitKph)
         {
             if (recorder == null || recorder.Samples.Count == 0) return 0f;
+
             int over = 0;
-            foreach (var x in recorder.Samples)
+            foreach (TelemetrySample x in recorder.Samples)
                 if (x.speedKph > limitKph) over++;
+
             return (float)over / recorder.Samples.Count;
+        }
+
+        public void Configure(TelemetryRecorder rec, MirrorCheckDetector mirrors,
+                              GapAcceptanceDetector gaps)
+        {
+            recorder = rec;
+            mirrorDetector = mirrors;
+            gapDetector = gaps;
         }
     }
 }

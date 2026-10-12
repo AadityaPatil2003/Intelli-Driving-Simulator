@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using UnityEngine;
@@ -7,18 +8,17 @@ using IDS.Core;
 namespace IDS.Telemetry
 {
     /// <summary>
-    /// Samples the vehicle at a fixed rate and writes CSV. Physics runs at 50 Hz
-    /// but we log at 20 Hz — enough to resolve a braking reaction, cheap enough
+    /// Samples the vehicle at a fixed rate and writes CSV. Physics runs at 50 Hz;
+    /// logging is at 20 Hz — enough to resolve a braking reaction, cheap enough
     /// not to matter on the device.
     ///
-    /// Writes are buffered and flushed periodically rather than every sample.
-    /// A per-sample File.AppendAllText on Android costs frames and is the kind of
-    /// thing that shows up as mysterious hitching during a hazard.
+    /// Writes are buffered and flushed periodically. A per-sample
+    /// File.AppendAllText on Android costs frames and shows up as mysterious
+    /// hitching during a hazard, which is the worst possible moment.
     ///
-    /// FILES: Application.persistentDataPath/Sessions/session_<timestamp>.csv
-    /// Pull them off the device with adb (see 03_QUEST_DEPLOYMENT.md).
-    ///
-    /// OWNER: Anushka.
+    /// FILES: Application.persistentDataPath/Sessions/&lt;sessionId&gt;.csv, with a
+    /// matching _events.csv. Pull them off the headset with
+    ///     adb pull /sdcard/Android/data/&lt;package&gt;/files/Sessions
     /// </summary>
     public class TelemetryRecorder : MonoBehaviour, ITelemetrySink
     {
@@ -28,10 +28,11 @@ namespace IDS.Telemetry
         [SerializeField] private int flushEverySamples = 100;
 
         [Header("Sources (auto-resolved if empty)")]
-        [SerializeField] private MonoBehaviour vehicleRef;      // IVehicleState
-        [SerializeField] private MonoBehaviour laneRef;         // ILaneReference
+        [SerializeField] private MonoBehaviour vehicleRef;   // IVehicleState
+        [SerializeField] private MonoBehaviour laneRef;      // ILaneReference
         [SerializeField] private Transform headTransform;
         [SerializeField] private MirrorCheckDetector mirrorDetector;
+        [SerializeField] private CountryProfileHolder profileHolder;
 
         public bool IsRecording { get; private set; }
         public string CurrentSessionId { get; private set; } = "";
@@ -40,9 +41,11 @@ namespace IDS.Telemetry
         public List<TelemetrySample> Samples { get; } = new();
         public List<TelemetryEvent> Events { get; } = new();
 
+        /// <summary>Where the last session's CSV was written. Shown in the report.</summary>
+        public string LastFilePath { get; private set; } = "";
+
         private IVehicleState _vehicle;
         private ILaneReference _lane;
-        private CountryProfileHolder _profile;
 
         private float _sampleInterval;
         private float _sinceLastSample;
@@ -62,36 +65,52 @@ namespace IDS.Telemetry
 
         private void Start()
         {
-            _vehicle = vehicleRef as IVehicleState ?? ServiceRegistry.Require<IVehicleState>("Ananya");
-            _lane    = laneRef as ILaneReference   ?? ServiceRegistry.Require<ILaneReference>("Ananya");
-            if (headTransform == null && Camera.main != null) headTransform = Camera.main.transform;
-            mirrorDetector ??= GetComponent<MirrorCheckDetector>();
-            _profile ??= FindFirstObjectByType<CountryProfileHolder>(FindObjectsInactive.Exclude);
+            _vehicle = vehicleRef as IVehicleState ?? ServiceRegistry.Require<IVehicleState>("vehicle");
+            _lane = laneRef as ILaneReference ?? ServiceRegistry.Require<ILaneReference>("lane reference");
+
+            if (headTransform == null && Camera.main != null)
+                headTransform = Camera.main.transform;
+
+            mirrorDetector ??= ServiceRegistry.Resolve<MirrorCheckDetector>();
+            profileHolder ??= ServiceRegistry.Resolve<CountryProfileHolder>();
+
+            if (_lane == null)
+                Debug.LogWarning("[Telemetry] no ILaneReference — lane_offset will be " +
+                                 "zero in every row and lane_offset_rms will be " +
+                                 "meaningless. Do not report a lane-keeping score " +
+                                 "from such a session.");
         }
 
         private void OnEnable()
         {
-            SessionEvents.SessionStarted    += OnSessionStarted;
-            SessionEvents.SessionEnded      += OnSessionEnded;
+            SessionEvents.SessionStarted += OnSessionStarted;
+            SessionEvents.SessionEnded += OnSessionEnded;
             SessionEvents.ScenarioTriggered += OnScenarioTriggered;
-            SessionEvents.ScenarioResolved  += OnScenarioResolved;
+            SessionEvents.ScenarioResolved += OnScenarioResolved;
             SessionEvents.CollisionOccurred += OnCollision;
         }
 
         private void OnDisable()
         {
-            SessionEvents.SessionStarted    -= OnSessionStarted;
-            SessionEvents.SessionEnded      -= OnSessionEnded;
+            SessionEvents.SessionStarted -= OnSessionStarted;
+            SessionEvents.SessionEnded -= OnSessionEnded;
             SessionEvents.ScenarioTriggered -= OnScenarioTriggered;
-            SessionEvents.ScenarioResolved  -= OnScenarioResolved;
+            SessionEvents.ScenarioResolved -= OnScenarioResolved;
             SessionEvents.CollisionOccurred -= OnCollision;
             if (IsRecording) StopSession();
         }
 
-        // ---- session lifecycle ----------------------------------------------
+        private void OnApplicationPause(bool paused)
+        {
+            // Taking the headset off backgrounds the app. Flush, or the last
+            // buffered samples are lost along with the session.
+            if (paused && IsRecording) Flush();
+        }
+
+        // ---- session lifecycle ------------------------------------------------
 
         private void OnSessionStarted(string sessionId) => StartSession(sessionId);
-        private void OnSessionEnded(RiskAssessment _) => StopSession();
+        private void OnSessionEnded(RiskAssessment assessment) => StopSession();
 
         public void StartSession(string sessionId)
         {
@@ -102,14 +121,28 @@ namespace IDS.Telemetry
             _buffer.Clear();
             _unflushed = 0;
             _activeScenarioId = "";
+            _collisionThisSample = false;
+            _sinceLastSample = 0f;
             _vehicle?.ResetSessionCounters();
 
             string dir = Path.Combine(Application.persistentDataPath, "Sessions");
-            Directory.CreateDirectory(dir);
-            _filePath = Path.Combine(dir, $"{sessionId}.csv");
 
-            File.WriteAllText(_filePath, TelemetrySample.CsvHeader + "\n");
+            try
+            {
+                Directory.CreateDirectory(dir);
+                _filePath = Path.Combine(dir, $"{sessionId}.csv");
+                File.WriteAllText(_filePath, TelemetrySample.CsvHeader + "\n");
+            }
+            catch (IOException e)
+            {
+                Debug.LogError($"[Telemetry] cannot open {dir} for writing: {e.Message}. " +
+                               "The session will still run but nothing will be recorded.");
+                _filePath = "";
+                return;
+            }
+
             IsRecording = true;
+            LastFilePath = _filePath;
 
             Debug.Log($"[Telemetry] recording → {_filePath}");
             RecordEvent("recording_started", $"schema_v{TelemetrySample.SchemaVersion}");
@@ -146,8 +179,8 @@ namespace IDS.Telemetry
             if (headTransform != null)
             {
                 Vector3 local = Quaternion.Inverse(
-                    Quaternion.LookRotation(_vehicle.Forward, Vector3.up))
-                    * headTransform.forward;
+                                    Quaternion.LookRotation(_vehicle.Forward, Vector3.up))
+                                * headTransform.forward;
                 headYaw = Mathf.Atan2(local.x, local.z) * Mathf.Rad2Deg;
                 headPitch = -Mathf.Asin(Mathf.Clamp(local.y, -1f, 1f)) * Mathf.Rad2Deg;
             }
@@ -156,7 +189,7 @@ namespace IDS.Telemetry
             {
                 t = Time.time - _sessionStartTime,
                 sessionId = CurrentSessionId,
-                countryProfile = _profile?.ProfileId ?? "unknown",
+                countryProfile = profileHolder != null ? profileHolder.ProfileId : "unknown",
                 scenarioId = _activeScenarioId,
                 posX = pos.x, posY = pos.y, posZ = pos.z,
                 speedKph = _vehicle.CurrentSpeedKph,
@@ -209,29 +242,47 @@ namespace IDS.Telemetry
 
         private void OnScenarioResolved(ScenarioResult r)
         {
+            // InvariantCulture throughout: these strings are parsed back by the
+            // feature extractor and read by analysis scripts outside Unity. On a
+            // comma-decimal locale, "0,84" would not parse as a number in either
+            // place, and the reaction time would silently become "no response".
+            CultureInfo c = CultureInfo.InvariantCulture;
+
             RecordEvent("hazard_resolved",
-                $"{r.ScenarioId}|react={r.ReactionTime:F2}|collision={r.Collision}");
+                $"{r.ScenarioId}|react={r.ReactionTime.ToString("F2", c)}" +
+                $"|collision={(r.Collision ? 1 : 0)}");
+
             _activeScenarioId = "";
         }
 
         private void OnCollision(float impactKph)
         {
             _collisionThisSample = true;
-            RecordEvent("collision", impactKph.ToString("F1"));
+            RecordEvent("collision", impactKph.ToString("F1", CultureInfo.InvariantCulture));
         }
 
         private void WriteEventLog()
         {
             if (string.IsNullOrEmpty(_filePath)) return;
+
             string path = _filePath.Replace(".csv", "_events.csv");
             var sb = new StringBuilder("t,event,detail\n");
-            foreach (var e in Events)
+            foreach (TelemetryEvent e in Events)
                 sb.Append($"{e.t:F3},{e.name},{e.detail}\n");
+
             try { File.WriteAllText(path, sb.ToString()); }
             catch (IOException ex) { Debug.LogError($"[Telemetry] event log failed: {ex.Message}"); }
         }
 
-        public void SetProfileHolder(CountryProfileHolder holder) => _profile = holder;
+        public void Configure(MonoBehaviour vehicle, MonoBehaviour lane, Transform head,
+                              MirrorCheckDetector mirrors, CountryProfileHolder holder)
+        {
+            vehicleRef = vehicle;
+            laneRef = lane;
+            headTransform = head;
+            mirrorDetector = mirrors;
+            profileHolder = holder;
+        }
     }
 
     public struct TelemetryEvent
@@ -239,20 +290,5 @@ namespace IDS.Telemetry
         public float t;
         public string name;
         public string detail;
-    }
-
-    /// <summary>
-    /// Tiny indirection so the telemetry code does not have to know about the AI
-    /// stream's CountryProfile type just to write a profile id into the CSV.
-    /// Put one of these anywhere in the scene.
-    /// </summary>
-    public class CountryProfileHolder : MonoBehaviour
-    {
-        public string ProfileId { get; private set; } = "unknown";
-
-        private void OnEnable()  => SessionEvents.CountryProfileChanged += Set;
-        private void OnDisable() => SessionEvents.CountryProfileChanged -= Set;
-
-        private void Set(string id) => ProfileId = id;
     }
 }

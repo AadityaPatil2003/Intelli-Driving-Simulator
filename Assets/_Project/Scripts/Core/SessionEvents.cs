@@ -1,53 +1,54 @@
 using System;
-using IDS.Core;
 
 namespace IDS.Core
 {
     /// <summary>
-    /// The only place streams are allowed to shout at each other. Using a static
-    /// event bus rather than direct references means Omkar's UI can be built and
-    /// tested before Anushka's scorer exists, and vice versa.
+    /// The only place subsystems are allowed to shout at each other. A static
+    /// event bus rather than direct references means the UI can be built and
+    /// tested before the scorer exists, and vice versa.
     ///
     /// RULES
     /// 1. Subscribe in OnEnable, unsubscribe in OnDisable. Always. A missed
-    ///    unsubscribe survives scene loads and causes ghost callbacks that are
-    ///    genuinely horrible to debug.
+    ///    unsubscribe survives scene loads and causes ghost callbacks on
+    ///    destroyed objects, which are genuinely horrible to debug.
     /// 2. Never assume ordering between subscribers.
     /// 3. Publishers are named in the comment on each event. Do not raise an
     ///    event you do not own.
+    /// 4. Use a named method as the handler, never a lambda — a lambda cannot be
+    ///    unsubscribed, so rule 1 becomes impossible to honour.
     /// </summary>
     public static class SessionEvents
     {
-        // Raised by SessionManager (Aaditya)
+        // Raised by SessionManager
         public static event Action<string> SessionStarted;          // sessionId
         public static event Action<RiskAssessment> SessionEnded;
         public static event Action<SessionPhase> PhaseChanged;
 
-        // Raised by CountryProfileManager (Anushka's data, Aaditya's manager)
+        // Raised by CountryProfileManager
         public static event Action<string> CountryProfileChanged;   // profileId
 
-        // Raised by CalibrationManager (Aaditya)
-        public static event Action CalibrationCompleted;
+        // Raised by VRSeatRecenter
+        public static event Action SeatRecentred;
 
-        // Raised by ScenarioManager (Omkar)
+        // Raised by ScenarioManager / HazardScenarioBase
         public static event Action<string> ScenarioArmed;           // scenarioId
         public static event Action<string> ScenarioTriggered;
         public static event Action<ScenarioResult> ScenarioResolved;
 
-        // Raised by AlertManager (Omkar)
+        // Raised by AlertManager's callers
         public static event Action<string, AlertPriority> AlertRaised;
 
-        // Raised by VehicleController (Ananya)
+        // Raised by VehicleController
         public static event Action<float> CollisionOccurred;        // impact speed kph
 
-        // Raised by VehicleInputAdapter (Aaditya)
-        public static event Action<string> InputProviderChanged;    // provider name
+        // Raised by VehicleInputAdapter
+        public static event Action<string> InputProviderChanged;    // description
 
         public static void RaiseSessionStarted(string id) => SessionStarted?.Invoke(id);
         public static void RaiseSessionEnded(RiskAssessment a) => SessionEnded?.Invoke(a);
         public static void RaisePhaseChanged(SessionPhase p) => PhaseChanged?.Invoke(p);
         public static void RaiseCountryProfileChanged(string id) => CountryProfileChanged?.Invoke(id);
-        public static void RaiseCalibrationCompleted() => CalibrationCompleted?.Invoke();
+        public static void RaiseSeatRecentred() => SeatRecentred?.Invoke();
         public static void RaiseScenarioArmed(string id) => ScenarioArmed?.Invoke(id);
         public static void RaiseScenarioTriggered(string id) => ScenarioTriggered?.Invoke(id);
         public static void RaiseScenarioResolved(ScenarioResult r) => ScenarioResolved?.Invoke(r);
@@ -55,12 +56,14 @@ namespace IDS.Core
         public static void RaiseCollision(float speedKph) => CollisionOccurred?.Invoke(speedKph);
         public static void RaiseInputProviderChanged(string n) => InputProviderChanged?.Invoke(n);
 
-        /// Call from SessionManager.OnDestroy in the editor so domain reload does
+        /// <summary>
+        /// Called from SessionManager.OnDestroy so an editor domain reload does
         /// not leave stale subscribers between Play sessions.
+        /// </summary>
         public static void ClearAll()
         {
             SessionStarted = null; SessionEnded = null; PhaseChanged = null;
-            CountryProfileChanged = null; CalibrationCompleted = null;
+            CountryProfileChanged = null; SeatRecentred = null;
             ScenarioArmed = null; ScenarioTriggered = null; ScenarioResolved = null;
             AlertRaised = null; CollisionOccurred = null; InputProviderChanged = null;
         }
